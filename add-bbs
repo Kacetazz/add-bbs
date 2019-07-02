@@ -1,0 +1,83 @@
+//----------------------------------------------------------------
+// Adicionar bbs
+//----------------------------------------------------------------
+
+if(game_data.player.premium == false) {
+	UI.InfoMessage('Para utilizar esse script é necessário uma Conta Premium!', 3000, true);
+	end();
+}
+
+if(game_data.screen != 'map'){
+	UI.InfoMessage('Script deve ser usado no mapa!', 3000, true);
+	end();
+}
+
+var camp = prompt("Insira número máximo de campos para adicionar bbs (30)", 30);
+
+function distanceSq (a, b){
+	return (a.x - b.x)*(a.x - b.x) + (a.y - b.y)*(a.y - b.y);
+}
+
+function fromXY(s){
+	return {x:(s - s % 1e3) / 1e3, y: s % 1e3};
+}
+
+function isAttacking(village){
+	return TWMap.commandIcons[village.id] !== undefined && TWMap.commandIcons[village.id].some(e => e.img === 'attack');
+}
+
+var total = 0;
+
+function showEnd(semBats = false){
+	if(semBats)
+		UI.InfoMessage("Sem mais batedores! " + total + " BBs adicionadas.");
+	else
+		UI.InfoMessage("TERMINADO! " + total + " BBs adicionadas.");
+}
+
+function recBats(list, i){
+	if(i == list.length) return showEnd();
+	$.ajax({
+		url: TWMap.urls.villagePopup.replace(/__village__/, list[i].id),
+		dataType: "json",
+		type: "GET",
+		success: function(e) {
+			//skip
+			if(e[0].attack) recBats(list, i+1);
+			else attack(list[i], function(){recBats(list, i+1)});
+		},
+		error: function(e){
+			recBats(list, i+1);
+		}
+	});
+};
+
+function attack(v, callback){
+	$.ajax({
+		url: TWMap.urls.ctx.mp_farm_a.replace("__village__", v.id).replace("__source__", game_data.village.id),
+		dataType: "json",
+		type: "GET",
+		success: function(e) {
+			total++;
+			UI.InfoMessage("BBs Adicionadas: " + total);
+		    if(e.current_units && e.current_units.spy != "0")
+				setTimeout(callback, 1000/5 + 100);
+			else showEnd();
+		},
+		error: function(e){
+			showEnd(true);
+		}
+	});
+}
+
+function cb(){
+	var current = game_data.village;
+	var villages = Object.keys(TWMap.villages).map(function(k){return TWMap.villages[k]});
+	villages = villages.filter(function(v){return v.owner === "0" && !isAttacking(v) && distanceSq(current, fromXY(v.xy)) < camp*camp});
+	villages = villages.sort(function(a, b) {
+	    return distanceSq(current, fromXY(a.xy)) - distanceSq(current, fromXY(b.xy));
+	});
+	recBats(villages, 0);
+}
+
+UI.ConfirmationBox('Iniciar envio?', [{text: 'OK', callback: cb, confirm: true}]);
